@@ -133,3 +133,54 @@ not friendly labels. No code change.
 `package.json` `bin` maps only `lane-report`. Add `ship-check` pointing at the
 same entry, keep `lane-report` as an alias so nothing breaks, and update the
 README quickstart to show `ship-check --gate ...`.
+
+## 6. A senior reviewer, and a gate that requires structured findings
+
+The external review that produced items 1–5 exposed a gap this repo's own
+reviewer had walked into: the gate-1 fix wave fixed the two fail-open surfaces it
+was told about (`--eligible`, `--status`) and never asked whether the **class**
+was closed — `--metrics` and `--landed` were the same bug, unfound. A junior
+reviewer checks what is flagged; a senior asks where else the flagged behavior
+lives. This item encodes that in two places.
+
+### 6a — the reviewer contract gains five mandated passes
+
+`templates/reviewer-contract.md` is rewritten to require, as discipline the
+reviewing agent is bound by, five passes on every review:
+
+1. **Blast-radius pass (class, not instance), mandatory and first.** For every
+   behavior the change touches, grep every *other* site sharing that behavior and
+   verify it too; a finding is not closed until its whole class is checked. The
+   gate-1 miss (2 of 4 fail-open surfaces fixed) is the worked cautionary example.
+2. **Claim-vs-code drift.** Re-check every doc, comment, and README against the
+   new behavior; a promise the code no longer keeps is a finding.
+3. **Refute, don't confirm.** Construct hostile inputs; try to make it fail.
+4. **Severity calibration, explicit.** Grade every finding blocker / important /
+   minor against a stated line, so a bless is credible because a block is reserved
+   for real stop-ships.
+5. **The missing-question pass.** "What would a senior ask that the author
+   didn't?" — the edge, the interaction, the production reality the spec missed.
+
+### 6b — the gate requires structured findings
+
+The gate cannot verify a blast-radius pass happened — that is the contract's
+discipline and the record's credibility. It **can** refuse a review that reached
+no structured, calibrated result. A new checked fact,
+`--ship-check-findings <spec>`, carries the review's severity-tagged summary:
+
+- **Valid structured spec:** `none` (an explicit clean pass — an adversarial walk
+  that found nothing), or a comma list of `severity=count` over `blocker`,
+  `important`, `minor` (e.g. `blocker=0,important=2,minor=1`).
+- **Unstructured** (absent, empty, `looks fine`, a bare `yes`) fails the gate:
+  the gate parks with a reason naming what is missing. This is a **park**, not a
+  usage error — an unstructured review is a review-quality signal, not operator
+  error, so it accumulates as a reason alongside the other gates rather than
+  dying.
+- **Calibration consistency:** a bless (`--ship-check-passed yes`) carrying a
+  `blocker` finding parks — a blocker must block. The gate thereby enforces that
+  the review **happened**, was **independent** (the existing identity gate), and
+  was **calibrated**; the *seniority* of the judgment stays the contract's job.
+
+`parseReviewFindings` (pure, in `lane-tally.mjs`) parses the spec; `mergeVerdict`
+gains the two reasons above, in the accumulate-all-failures style. The dispatch
+procedure, the walkthrough, and the README gate examples pass the new flag.
