@@ -275,10 +275,54 @@ test("an unknown flag is a usage error rather than a silent fallback to the defa
 
 test("--status never prints Lane NaN for a row with an unparseable lane number", () => {
   const r = run(["--status", join(here, "fixtures", "lane-state-edge.md"), "--today", "2026-08-27"]);
-  assert.equal(r.status, 0);
+  // The edge board carries malformed rows, so --status now fails closed (exit 2,
+  // see the fix-wave-1 section below). It still prints the board on stdout, which
+  // is what this test pins: no NaN reaches the reader.
+  assert.equal(r.status, 2);
   assert.doesNotMatch(r.stdout, /Lane NaN/);
   assert.doesNotMatch(r.stdout, /NaN/, "no NaN anywhere in the status output");
   assert.match(r.stdout, /Lane unnumbered/);
+});
+
+// --- Fix wave 1: a malformed row inside a valid lane table must FAIL CLOSED ---
+// readLaneFile already guards a missing/renamed TABLE (exit 2), but a malformed
+// ROW inside a valid table was unguarded: --eligible printed the other rows as
+// launchable and exited 0, telling the orchestrator to launch a second lane onto
+// a repo whose in-flight lane is already broken — the exact repo collision the
+// independence rule exists to prevent. A malformed board is not an empty
+// all-clear board, the same lesson the missing-table guard carries. The edge
+// fixture is a valid table with malformed rows (row 6 is truncated to four
+// columns).
+const malformedBoard = join(here, "fixtures", "lane-state-edge.md");
+
+test("--eligible fails closed on a malformed lane row, names it, and never lists launchable rows", () => {
+  const r = run(["--eligible", queue, malformedBoard]);
+  assert.equal(r.status, 2, "a malformed board must not exit 0");
+  assert.doesNotMatch(r.stdout, /Launchable rows/, "must not offer launches on a malformed board");
+  assert.match(r.stderr, /malformed/i, "the refusal must say the board is malformed");
+  assert.match(r.stderr, /column/i, "the refusal must name what is wrong: the column count");
+  assert.match(r.stderr, /esp/, "the refusal must name the offending row (its raw text)");
+});
+
+test("--eligible still lists launchable rows normally on a clean board, exit 0", () => {
+  const r = run(["--eligible", queue, lanes]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /Launchable rows/);
+  assert.match(r.stdout, /ESP provider-detection/);
+});
+
+test("--status fails closed (exit 2) on a malformed board but still names the row on stdout", () => {
+  const r = run(["--status", malformedBoard, "--today", "2026-08-27"]);
+  assert.equal(r.status, 2, "a malformed board must not read as a clean exit 0");
+  assert.match(r.stdout, /Malformed rows/, "the malformed section still prints so the reader can fix it");
+  assert.match(r.stdout, /column/i, "the column-count reason is named");
+});
+
+test("--status exits 0 and lists open lanes on a clean board", () => {
+  const r = run(["--status", lanes, "--today", "2026-08-27"]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /overlap-mapper/);
+  assert.doesNotMatch(r.stdout, /Malformed rows/);
 });
 
 // A header rename (or a split table) made parseLanes return an empty array, and
