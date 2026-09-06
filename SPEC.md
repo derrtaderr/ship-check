@@ -1,7 +1,7 @@
 # SPEC — the lane engine extract
 
 This repository is an **extract** of a multi-agent software-delivery loop that
-has been running in production inside a private operating vault. A single build
+has been running in production inside a private operating system. A single build
 week put twelve lanes through twenty-two adversarial review gates, took one repo
 from 138 to 1264 tests, survived two agents being killed mid-run by usage caps
 with zero work lost, and correctly parked a production repo's merge for a human.
@@ -58,7 +58,7 @@ runnable proof-of-rigor beneath them.
 
 ## The genericization pass
 
-The source lived in a personal vault and named private repos, brands, people,
+The source lived in a personal operating system and named private repos, brands, people,
 and file paths. Every such reference is replaced before it ships:
 
 - The protected/production repo set is replaced with neutral example names
@@ -70,8 +70,8 @@ and file paths. Every such reference is replaced before it ships:
   `widget-lib`, `command-center`, `repo-a`, `repo-b`, `billing-service`,
   `payments-api`).
 - Default file paths resolve against the current working directory
-  (`./lane-state.md`, `./build-queue.md`) instead of a hard-wired vault subtree.
-- Three tests in the source read live vault files as regression guards. Those
+  (`./lane-state.md`, `./build-queue.md`) instead of a hard-wired private subtree.
+- Three tests in the source read live private files as regression guards. Those
   are inherently coupled to a private tree and are dropped; the fixture-based
   coverage they sat beside is kept in full.
 - Comment references to private command names and doc paths are rewritten to
