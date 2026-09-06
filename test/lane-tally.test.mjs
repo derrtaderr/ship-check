@@ -238,7 +238,7 @@ test("a lane malformed for a non-status reason still claims its repo via activeR
   assert.ok(repos.has("payments-api"), "a malformed-but-status-legible running row must still claim its repo");
 });
 
-import { mergeVerdict, PRODUCTION_REPOS } from "../lib/lane-tally.mjs";
+import { mergeVerdict, resolveProtectionPolicy } from "../lib/lane-tally.mjs";
 
 const greenChecks = {
   hasTests: true,
@@ -249,44 +249,119 @@ const greenChecks = {
   scopeClean: true,
 };
 
+// The protected policy is now a required third argument to mergeVerdict, loaded
+// from ship-check.config.json by the CLI. LISTED is the resolved policy for a
+// configured non-empty list; these existing cases exercise "protected repo" and
+// "not protected repo" behaviour and default to it. The three configuration
+// states themselves (not-configured, listed, []) are covered explicitly below.
+const LISTED = resolveProtectionPolicy({
+  protectedRepos: [
+    "billing-service",
+    "payments-api",
+    "checkout-web",
+    "user-directory",
+    "data-pipeline",
+    "core-platform",
+  ],
+});
+const mv = (lane, checks, policy = LISTED) => mergeVerdict(lane, checks, policy);
+
 test("a green lane on a greenfield repo auto-merges", () => {
-  const v = mergeVerdict({ repo: "esp" }, greenChecks);
+  const v = mv({ repo: "esp" }, greenChecks);
   assert.equal(v.autoMerge, true);
   assert.deepEqual(v.reasons, []);
 });
 
 test("a build with no tests can never auto-merge", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, hasTests: false });
+  const v = mv({ repo: "esp" }, { ...greenChecks, hasTests: false });
   assert.equal(v.autoMerge, false);
   assert.ok(v.reasons.some((r) => /no tests/i.test(r)));
 });
 
 test("a protected repo stays human-merge even when fully green", () => {
-  const v = mergeVerdict({ repo: "billing-service" }, greenChecks);
+  const v = mv({ repo: "billing-service" }, greenChecks);
   assert.equal(v.autoMerge, false);
   assert.ok(v.reasons.some((r) => /protected/i.test(r)));
 });
 
 test("a lane cannot bless its own work", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "execution-agent-1" });
+  const v = mv({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "execution-agent-1" });
   assert.equal(v.autoMerge, false);
   assert.ok(v.reasons.some((r) => /own work/i.test(r)));
 });
 
 test("scope drift blocks the merge", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, scopeClean: false });
+  const v = mv({ repo: "esp" }, { ...greenChecks, scopeClean: false });
   assert.equal(v.autoMerge, false);
   assert.ok(v.reasons.some((r) => /scope/i.test(r)));
 });
 
 test("every failing gate is reported, not just the first", () => {
-  const v = mergeVerdict({ repo: "billing-service" }, { ...greenChecks, hasTests: false, scopeClean: false });
+  const v = mv({ repo: "billing-service" }, { ...greenChecks, hasTests: false, scopeClean: false });
   assert.equal(v.autoMerge, false);
   assert.equal(v.reasons.length, 3);
 });
 
-test("the protected set is exactly what the engine names", () => {
-  assert.deepEqual([...PRODUCTION_REPOS].sort(), [
+// --- Protected repos are configuration, not a source edit ---
+// resolveProtectionPolicy turns a parsed ship-check.config.json (or null) into
+// one of three states, and mergeVerdict acts on the resolved policy. The
+// example names live only in the example config file, never as an effective
+// default in the library.
+
+test("resolveProtectionPolicy: no config file at all is NOT configured, not an empty all-clear", () => {
+  const p = resolveProtectionPolicy(null);
+  assert.equal(p.configured, false);
+  assert.equal(p.optOut, false);
+});
+
+test("resolveProtectionPolicy: a non-empty list is configured and not an opt-out", () => {
+  const p = resolveProtectionPolicy({ protectedRepos: ["billing-service"] });
+  assert.equal(p.configured, true);
+  assert.equal(p.optOut, false);
+  assert.deepEqual(p.repos, ["billing-service"]);
+});
+
+test("resolveProtectionPolicy: an empty list is the deliberate opt-out", () => {
+  const p = resolveProtectionPolicy({ protectedRepos: [] });
+  assert.equal(p.configured, true);
+  assert.equal(p.optOut, true);
+  assert.deepEqual(p.repos, []);
+});
+
+test("resolveProtectionPolicy: a missing or non-array protectedRepos is malformed, not a silent opt-out", () => {
+  assert.ok(resolveProtectionPolicy({}).malformed, "missing protectedRepos is malformed");
+  assert.ok(resolveProtectionPolicy({ protectedRepos: "billing-service" }).malformed, "a string is malformed");
+  assert.ok(resolveProtectionPolicy({ protectedRepos: [1, 2] }).malformed, "non-string entries are malformed");
+});
+
+test("mergeVerdict with no configured policy PARKS with the not-configured reason", () => {
+  const v = mergeVerdict({ repo: "esp" }, greenChecks, resolveProtectionPolicy(null));
+  assert.equal(v.autoMerge, false, "an unconfigured protection policy must never auto-merge");
+  assert.ok(v.reasons.some((r) => /not configured/i.test(r)));
+  assert.ok(v.reasons.some((r) => /ship-check\.config\.json/i.test(r)));
+});
+
+test("mergeVerdict with a configured list parks a listed repo and passes an unlisted one", () => {
+  const policy = resolveProtectionPolicy({ protectedRepos: ["billing-service"] });
+  const listed = mergeVerdict({ repo: "billing-service" }, greenChecks, policy);
+  assert.equal(listed.autoMerge, false);
+  assert.ok(listed.reasons.some((r) => /protected/i.test(r)));
+
+  const unlisted = mergeVerdict({ repo: "esp" }, greenChecks, policy);
+  assert.equal(unlisted.autoMerge, true);
+  assert.ok(!unlisted.reasons.some((r) => /protected/i.test(r) || /not configured/i.test(r)));
+});
+
+test("mergeVerdict with an empty-list opt-out proceeds and protects nothing", () => {
+  const policy = resolveProtectionPolicy({ protectedRepos: [] });
+  const v = mergeVerdict({ repo: "billing-service" }, greenChecks, policy);
+  assert.equal(v.autoMerge, true, "the deliberate opt-out lets even a formerly-protected name auto-merge");
+  assert.ok(!v.reasons.some((r) => /protected/i.test(r) || /not configured/i.test(r)));
+});
+
+test("the example config file names the neutral example repos, so they live in docs not code", () => {
+  const cfg = JSON.parse(readFileSync(join(here, "..", "ship-check.config.example.json"), "utf8"));
+  assert.deepEqual([...cfg.protectedRepos].sort(), [
     "billing-service",
     "checkout-web",
     "core-platform",
@@ -297,7 +372,7 @@ test("the protected set is exactly what the engine names", () => {
 });
 
 test("the three collected reasons are distinct gates, not one message repeated", () => {
-  const v = mergeVerdict({ repo: "billing-service" }, { ...greenChecks, hasTests: false, scopeClean: false });
+  const v = mv({ repo: "billing-service" }, { ...greenChecks, hasTests: false, scopeClean: false });
   assert.equal(v.reasons.length, 3);
   assert.equal(new Set(v.reasons).size, 3, "each reason must be unique, not the same gate firing three times");
   assert.ok(v.reasons.some((r) => /no tests/i.test(r)));
@@ -306,19 +381,19 @@ test("the three collected reasons are distinct gates, not one message repeated",
 });
 
 test("a lane whose ship-check agent differs from the build agent passes that gate", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "user-advocate-1", buildAgent: "execution-agent-1" });
+  const v = mv({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "user-advocate-1", buildAgent: "execution-agent-1" });
   assert.equal(v.autoMerge, true);
   assert.ok(!v.reasons.some((r) => /own work/i.test(r)));
 });
 
 test("a lane whose ship-check agent equals the build agent fails that gate", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "execution-agent-1", buildAgent: "execution-agent-1" });
+  const v = mv({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "execution-agent-1", buildAgent: "execution-agent-1" });
   assert.equal(v.autoMerge, false);
   assert.ok(v.reasons.some((r) => /own work/i.test(r)));
 });
 
 test("a non-protected repo is not blocked by the protected gate", () => {
-  const v = mergeVerdict({ repo: "esp" }, greenChecks);
+  const v = mv({ repo: "esp" }, greenChecks);
   assert.ok(!v.reasons.some((r) => /protected/i.test(r)));
 });
 
@@ -462,24 +537,24 @@ test("an open lane one day past STALL_DAYS is stalled", () => {
 // Missing agent identity on the self-bless gate must block, not pass open.
 // Tested in all three states so an inverted or dropped check fails.
 test("differing, present agent identities pass the self-bless gate", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "user-advocate-1", buildAgent: "execution-agent-1" });
+  const v = mv({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "user-advocate-1", buildAgent: "execution-agent-1" });
   assert.equal(v.autoMerge, true);
 });
 
 test("matching agent identities are blocked as self-bless", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "execution-agent-1", buildAgent: "execution-agent-1" });
+  const v = mv({ repo: "esp" }, { ...greenChecks, shipCheckAgent: "execution-agent-1", buildAgent: "execution-agent-1" });
   assert.equal(v.autoMerge, false);
   assert.ok(v.reasons.some((r) => /own work/i.test(r)));
 });
 
 test("a missing shipCheckAgent is blocked, not waved through", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, shipCheckAgent: undefined });
+  const v = mv({ repo: "esp" }, { ...greenChecks, shipCheckAgent: undefined });
   assert.equal(v.autoMerge, false);
   assert.ok(v.reasons.some((r) => /missing/i.test(r)), `expected a missing-identity reason, got: ${v.reasons.join("; ")}`);
 });
 
 test("a missing buildAgent is blocked, not waved through", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, buildAgent: "" });
+  const v = mv({ repo: "esp" }, { ...greenChecks, buildAgent: "" });
   assert.equal(v.autoMerge, false);
   assert.ok(v.reasons.some((r) => /missing/i.test(r)), `expected a missing-identity reason, got: ${v.reasons.join("; ")}`);
 });
@@ -683,7 +758,7 @@ test("rankRows does not mutate the array it is handed", () => {
 // The de-nested mergeVerdict: a lane can fail ship-check AND have no recorded
 // agent identity, and both must be reported.
 test("a lane that fails ship-check and has no agent identity reports both reasons", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, shipCheckPassed: false, shipCheckAgent: undefined, buildAgent: undefined });
+  const v = mv({ repo: "esp" }, { ...greenChecks, shipCheckPassed: false, shipCheckAgent: undefined, buildAgent: undefined });
   assert.equal(v.autoMerge, false);
   assert.equal(v.reasons.length, 2, `expected both gates, got: ${v.reasons.join("; ")}`);
   assert.ok(v.reasons.some((r) => /ship-check did not pass/.test(r)));
@@ -691,7 +766,7 @@ test("a lane that fails ship-check and has no agent identity reports both reason
 });
 
 test("a lane that fails ship-check and blessed its own work reports both reasons", () => {
-  const v = mergeVerdict({ repo: "esp" }, { ...greenChecks, shipCheckPassed: false, shipCheckAgent: "a1", buildAgent: "a1" });
+  const v = mv({ repo: "esp" }, { ...greenChecks, shipCheckPassed: false, shipCheckAgent: "a1", buildAgent: "a1" });
   assert.equal(v.reasons.length, 2, `expected both gates, got: ${v.reasons.join("; ")}`);
   assert.ok(v.reasons.some((r) => /own work/.test(r)));
 });

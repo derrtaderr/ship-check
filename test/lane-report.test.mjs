@@ -5,7 +5,9 @@
 // working-directory default.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { ZONES, runInZone, assertZonesStraddle } from "./local-date.testkit.mjs";
@@ -16,17 +18,17 @@ const lanes = join(here, "fixtures", "lane-state-sample.md");
 const queue = join(here, "fixtures", "queue-sample.md");
 const headerAltered = join(here, "fixtures", "lane-state-header-altered.md");
 const examplesDir = join(here, "..", "examples");
+const configListed = join(here, "fixtures", "config-listed.json");
+const configOptOut = join(here, "fixtures", "config-optout.json");
+const configMalformed = join(here, "fixtures", "config-malformed.json");
+const configBadJson = join(here, "fixtures", "config-badjson.json");
 
 function run(args) {
-  try {
-    const stdout = execFileSync(process.execPath, [cli, ...args], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { status: 0, stdout, stderr: "" };
-  } catch (e) {
-    return { status: e.status, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
-  }
+  // spawnSync captures stderr on success as well as failure, so a test can
+  // assert on a note the CLI writes to stderr on an exit-0 path (the deliberate
+  // opt-out message). execFileSync discards stdout/stderr on a zero exit.
+  const r = spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" });
+  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
 
 test("--eligible names a launchable row", () => {
@@ -150,16 +152,21 @@ const GATE_GREEN = [
   "--ship-check-agent", "user-advocate-1",
   "--build-agent", "execution-agent-1",
   "--scope-clean", "yes",
+  // The protected policy is now configuration. The listed fixture config is the
+  // migrated stand-in for the old hard-coded PRODUCTION_REPOS const, so these
+  // existing gate cases keep their meaning (esp not protected -> auto-merge,
+  // billing-service -> protected).
+  "--config", configListed,
 ];
 
-function gate(overrides = {}) {
+function gate(overrides = {}, extra = []) {
   const args = [...GATE_GREEN];
   for (const [flag, value] of Object.entries(overrides)) {
     const i = args.indexOf(flag);
     if (value === null) args.splice(i, 2);
     else args[i + 1] = value;
   }
-  return run(args);
+  return run([...args, ...extra]);
 }
 
 test("--gate prints AUTO-MERGE for a green lane on a greenfield repo, exit 0", () => {
@@ -219,6 +226,120 @@ test("--gate rejects a yes/no flag carrying anything else", () => {
   const r = gate({ "--tests-pass": "true" });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /yes or no/);
+});
+
+// --- Protected repos as configuration: the three states ---
+// A safe-looking policy that was never actually configured is the worst failure
+// for a fail-closed gate, so "no config" must PARK, never silently pass.
+
+test("--gate with NO protection config parks with the not-configured message, never auto-merges", () => {
+  // Run in a throwaway cwd with no ship-check.config.json, so the absence is the
+  // state under test and not an accident of the repo's working directory.
+  const emptyCwd = mkdtempSync(join(tmpdir(), "ship-check-noconfig-"));
+  const args = [...GATE_GREEN];
+  const ci = args.indexOf("--config");
+  args.splice(ci, 2); // drop --config entirely
+  const r = (() => {
+    try {
+      return { status: 0, stdout: execFileSync(process.execPath, [cli, ...args], { encoding: "utf8", cwd: emptyCwd, stdio: ["ignore", "pipe", "pipe"] }), stderr: "" };
+    } catch (e) {
+      return { status: e.status, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+    }
+  })();
+  assert.match(r.stdout, /PARKED/, "an unconfigured policy must park");
+  assert.doesNotMatch(r.stdout, /AUTO-MERGE/);
+  assert.match(r.stdout, /not configured/i);
+  assert.match(r.stdout, /ship-check\.config\.json/i);
+});
+
+test("--gate with a configured list parks a listed repo", () => {
+  const r = gate({ "--repo": "billing-service" });
+  assert.match(r.stdout, /PARKED/);
+  assert.match(r.stdout, /protected/i);
+});
+
+test("--gate with the [] opt-out proceeds and says protection is deliberately disabled", () => {
+  // Even a formerly-protected name auto-merges under the deliberate opt-out.
+  const r = gate({ "--repo": "billing-service", "--config": configOptOut });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /AUTO-MERGE/);
+  assert.match(r.stderr, /deliberately disabled/i, "the opt-out is stated once");
+});
+
+test("--gate exits 2 when --config names a file that does not exist", () => {
+  const r = gate({ "--config": join(here, "fixtures", "no-such-config.json") });
+  assert.equal(r.status, 2, "a named-but-missing config is unreadable evidence, not a park");
+  assert.match(r.stderr, /config/i);
+});
+
+test("--gate exits 2 on a config that is not valid JSON", () => {
+  const r = gate({ "--config": configBadJson });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /config/i);
+});
+
+test("--gate exits 2 on a config whose protectedRepos is not an array", () => {
+  const r = gate({ "--config": configMalformed });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /protectedRepos/i);
+});
+
+// --- Machine-safe gate semantics: --ci exit codes and --json envelope ---
+// PARKED exits 0 on the human --gate, so `ship-check --gate && gh pr merge`
+// would merge a parked verdict. --ci gives distinct exit codes; --json gives a
+// field to read instead of a word or an exit code.
+
+test("--gate --ci exits 0 on AUTO-MERGE", () => {
+  const r = gate({}, ["--ci"]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /AUTO-MERGE/);
+});
+
+test("--gate --ci exits 3 on PARKED, so a chained merge cannot mistake it for a pass", () => {
+  const r = gate({ "--has-tests": "no" }, ["--ci"]);
+  assert.equal(r.status, 3, "parked must be a distinct non-zero exit under --ci");
+  assert.match(r.stdout, /PARKED/);
+});
+
+test("--gate --ci keeps exit 1 for a usage error", () => {
+  const r = gate({ "--has-tests": null }, ["--ci"]);
+  assert.equal(r.status, 1);
+});
+
+test("--gate --ci exits 2 on unreadable evidence (bad config), not 3", () => {
+  const r = gate({ "--config": configBadJson }, ["--ci"]);
+  assert.equal(r.status, 2, "invalid evidence is exit 2, distinct from a park");
+});
+
+test("plain --gate still exits 0 on PARKED, unchanged, so nothing breaks", () => {
+  const r = gate({ "--has-tests": "no" });
+  assert.equal(r.status, 0, "the human --gate keeps exit-0-on-park");
+  assert.match(r.stdout, /PARKED/);
+});
+
+test("--gate --json emits the { verdict, autoMerge, reasons } envelope on an auto-merge", () => {
+  const r = gate({}, ["--json"]);
+  assert.equal(r.status, 0);
+  const env = JSON.parse(r.stdout);
+  assert.equal(env.verdict, "AUTO-MERGE");
+  assert.equal(env.autoMerge, true);
+  assert.deepEqual(env.reasons, []);
+});
+
+test("--gate --json emits autoMerge false and every reason on a park", () => {
+  const r = gate({ "--has-tests": "no", "--repo": "billing-service" }, ["--json"]);
+  const env = JSON.parse(r.stdout);
+  assert.equal(env.verdict, "PARKED");
+  assert.equal(env.autoMerge, false);
+  assert.ok(env.reasons.some((x) => /no tests/i.test(x)));
+  assert.ok(env.reasons.some((x) => /protected/i.test(x)));
+});
+
+test("--gate --ci --json compose: JSON on stdout, exit 3 on a park", () => {
+  const r = gate({ "--has-tests": "no" }, ["--ci", "--json"]);
+  assert.equal(r.status, 3);
+  const env = JSON.parse(r.stdout);
+  assert.equal(env.autoMerge, false);
 });
 
 // --cap: capRecommendation and isCleanWeek execute against recorded history.
