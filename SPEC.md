@@ -26,7 +26,8 @@ The gate's verdicts are the real logic and are kept faithful:
 - **AUTO-MERGE** only when all of: the build has tests and they pass; an
   independent ship-check passed; the ship-check agent differs from the build
   agent (no self-bless); the repo is not in the protected/production set; the
-  diff stayed in scope.
+  diff stayed in scope; and the review produced severity-graded findings with no
+  blocker (a bless carrying a blocker, or no structured findings at all, parks).
 - **PARKED** otherwise, with every failing reason collected (not
   short-circuited), so one run names everything wrong with the lane.
 
@@ -61,11 +62,14 @@ runnable proof-of-rigor beneath them.
 The source lived in a personal operating system and named private repos, brands, people,
 and file paths. Every such reference is replaced before it ships:
 
-- The protected/production repo set is replaced with neutral example names
-  (`billing-service`, `payments-api`, `checkout-web`, `user-directory`,
-  `data-pipeline`, `core-platform`) and documented as a list the adopter edits
-  to their own protected repos. The mechanism — a named-exclusion list that
-  keeps blast-radius repos on human-merge — is preserved exactly.
+- The protected/production repo set is loaded from configuration
+  (`ship-check.config.json`, or `--config PATH`) rather than a source edit, and
+  the neutral example names (`billing-service`, `payments-api`, `checkout-web`,
+  `user-directory`, `data-pipeline`, `core-platform`) live only in
+  `ship-check.config.example.json`. With no config the gate parks rather than
+  treating the set as empty. The mechanism — a named-exclusion list that keeps
+  blast-radius repos on human-merge — is preserved exactly; see
+  `docs/harden-and-configure.md` for the three configuration states.
 - Fixture repo names are neutral (`esp`, `overlap-mapper`, `event-router`,
   `widget-lib`, `command-center`, `repo-a`, `repo-b`, `billing-service`,
   `payments-api`).
@@ -91,10 +95,14 @@ cross-links rather than overlapping.
 
 ## Faithfulness note (no new business logic)
 
-This is an extraction, not a new build. No new gate rule or parser behavior is
-authored here. The engine keeps its own comprehensive test suite, which is the
-evidence of faithfulness: it passes from a clean clone, and the genericization
-is a rename refactor that keeps every test green throughout. There is therefore
-no meaningful new-code red-first cycle to stage — reverting the engine yields a
-module-not-found, not a substantive failing assertion. The report states this
-plainly rather than dressing an extract up as green new work.
+This is an extraction, not a new build. The initial genericization authored no
+new gate rule or parser behavior; it is a rename refactor that keeps every test
+green throughout. The engine keeps its own comprehensive test suite, which is
+the evidence of faithfulness: it passes from a clean clone.
+
+A later review-driven hardening wave (`docs/harden-and-configure.md`) does
+change behavior deliberately — the malformed-board fail-closed extension to
+`--metrics`/`--landed`, protected repos as configuration, and the additive
+`--ci`/`--json` gate surface. That wave is genuine red-first new work with its
+own tests, and it is documented as a behavior change rather than folded into the
+extraction's "no new logic" framing.

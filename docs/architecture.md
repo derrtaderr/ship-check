@@ -49,15 +49,51 @@ so "green" has to carry the weight review used to. A lane auto-merges only when
 3. **The ship-check agent differs from the build agent.** A missing identity on
    either side is itself a block, not a pass — otherwise two `undefined` values
    compare equal and the gate fails open on exactly the build it exists to catch.
-4. **The repo is not in the protected set.** `PRODUCTION_REPOS` names the repos
+4. **The repo is not in the protected set.** The protected set names the repos
    whose blast radius is too large to auto-merge into; they stay human-merge
-   regardless of test state. **Edit this list to your own protected repos.** The
-   shipped names are neutral examples.
+   regardless of test state. It is **configuration**, not a source edit — see
+   "The protection policy" below.
 5. **The diff stayed in scope.**
 
 Every failing gate is **collected, not short-circuited**, so one run names
 everything wrong with the lane instead of one thing at a time. The verdict is
 `{ autoMerge, reasons }`; an empty `reasons` array is the only auto-merge.
+
+## The protection policy
+
+The protected set loads from `ship-check.config.json` in the working directory
+(or `--config PATH`), shaped `{ "protectedRepos": ["repo-a", "repo-b"] }`. It is
+configuration, never a source edit, because a hard-coded default of example
+names is a policy that *looks* configured while protecting nothing on a real
+adopter's repo — the worst failure a fail-closed gate can have. `mergeVerdict`
+takes the resolved policy and treats it as three distinct states:
+
+- **Not configured at all** (no file, no `--config`): the gate **parks** with a
+  message naming the fix. "No config" is never read as "nothing protected."
+- **Configured with a list**: those repos park regardless of test state.
+- **Configured `[]`**: the deliberate opt-out. The gate proceeds and says once
+  that protection is disabled.
+
+A config that is unreadable, is not valid JSON, or whose `protectedRepos` is not
+an array of strings is invalid *evidence*, and the gate exits 2 — distinct from
+a park. `resolveProtectionPolicy` (pure, in `lane-tally.mjs`) resolves the
+three states; the file read lives in `lane-report.mjs`. The example names ship
+only in `ship-check.config.example.json`.
+
+## The independence trust boundary
+
+The gate proves `reviewerId !== builderId` — that the recorded ship-check
+identity differs from the recorded build identity. It does **not** prove that
+those two IDs are genuinely separate agent sessions. A broken or dishonest
+harness could hand the gate two different labels for what is really one agent,
+and the gate would pass the self-bless check on a lane that blessed its own
+work. **Ship-check verifies the recorded identities differ; the harness is
+responsible for making those identities truthful.** The recommended future
+hardening is to record session/run IDs minted by the runtime — values the lane
+cannot choose for itself — rather than friendly labels, so the identities carry
+evidence of separate sessions and not just distinct strings. This is a boundary,
+not a bug: the engine checks what it can see, and the contract names what the
+harness must guarantee.
 
 ## The parsers
 
@@ -112,15 +148,38 @@ one). The cap moves on recorded numbers, never on how a week felt.
 | `--cap` | current cap, recommended cap, and the reason |
 | `--gate` | AUTO-MERGE or PARKED with every reason, from the five required flags |
 
+Every mode that derives an answer from the lane table fails closed on a
+malformed board — `--eligible`, `--status`, `--metrics`, and `--landed` all
+route through the missing-table and malformed-row guards, so a broken row never
+silently vanishes from a count or an audit. `--cap` reads no lane row (it
+derives only from the cap line and the metrics-history table, both separately
+guarded), so it is exempt by construction, not by oversight.
+
+`--gate` takes three optional flags on top of the five evidence flags:
+`--config PATH` (the protection policy; default `./ship-check.config.json`),
+`--ci` / `--strict` (make the verdict the exit code), and `--json` (print the
+`{ verdict, autoMerge, reasons }` envelope).
+
 Exit codes: `0` success (including a PARKED verdict — parking is a normal
-outcome), `1` bad usage, `2` an unreadable table **or a malformed lane row** on a
-launcher-input mode. A zero exit on `--gate` is not a pass on its own; read the
-word. `--help` (or `-h`) lists every mode and the gate's flags.
+outcome), `1` bad usage, `2` an unreadable table, a malformed lane row on a
+lane-reading mode, or an unreadable/invalid config. A zero exit on the human
+`--gate` is not a pass on its own; read the word. Under `--gate --ci` the
+verdict *is* the exit code: `0` auto-merge, `3` parked, `1` usage, `2` bad
+evidence — so `ship-check --gate --ci && gh pr merge` cannot merge a park.
+`--help` (or `-h`) lists every mode and the gate's flags.
 
 ## Faithfulness
 
-This engine is an extraction of a production instance. No gate rule or parser
-behavior was changed in the move. The genericization renamed the protected-repo
-set and the fixtures to neutral examples and re-pointed default file paths at the
-working directory; every rule the source system relied on is preserved, and the
-brought-across test suite (131 tests) is the proof.
+This engine is an extraction of a production instance. The original
+genericization renamed the protected-repo set and the fixtures to neutral
+examples and re-pointed default file paths at the working directory, changing no
+gate rule or parser behavior in the move.
+
+A later review-driven hardening wave (see `docs/harden-and-configure.md`) did
+change two behaviors on purpose, and names them plainly rather than hiding them
+under "extraction": `--metrics` and `--landed` now fail closed on a malformed
+board like the other lane-reading modes, and the protected-repo set became
+configuration with a not-configured park instead of a hard-coded default. The
+additive `--ci`/`--json` gate surface leaves the human `--gate` unchanged. Every
+rule the source system relied on is preserved, and the test suite (168 tests) is
+the proof.

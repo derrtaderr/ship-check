@@ -4,3 +4,6 @@ node_modules/
 /tmp/
 .env
 .env.*
+# An adopter's real protected-repo policy is theirs, not shipped. The committed
+# ship-check.config.example.json is the template to copy.
+/ship-check.config.json

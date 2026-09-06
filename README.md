@@ -51,39 +51,70 @@ Requires Node 18+. No dependencies to install.
 ```bash
 git clone <this-repo> ship-check
 cd ship-check
-npm test                       # 131 tests, zero dependencies
+npm test                       # 168 tests, zero dependencies
+npm link                       # optional: puts `ship-check` on your PATH
 ```
 
-Run the gate. It takes five pieces of evidence and returns one verdict:
+First, tell the gate which repos are too big to auto-merge into. Copy the
+example config and edit it to your own blast-radius repos:
 
 ```bash
-node lib/lane-report.mjs --gate --repo my-service \
+cp ship-check.config.example.json ship-check.config.json
+# edit protectedRepos: [...] — or set it to [] to opt out of protection deliberately
+```
+
+With **no** config present the gate parks and tells you to create one. It never
+treats "unconfigured" as "nothing protected."
+
+Run the gate. It takes its evidence and returns one verdict:
+
+```bash
+ship-check --gate --repo my-service \
   --has-tests yes --tests-pass yes \
   --ship-check-passed yes \
   --ship-check-agent reviewer-1 --build-agent builder-1 \
-  --scope-clean yes
+  --scope-clean yes \
+  --ship-check-findings none
 # => AUTO-MERGE
 ```
+
+`--ship-check-findings` carries the reviewer's severity-tagged result — `none`
+for a clean adversarial pass, or `blocker=N,important=N,minor=N`. An unstructured
+review parks, and a bless carrying a `blocker` parks: the gate enforces that the
+review happened and was calibrated, not just that someone said "looks fine."
 
 Flip any input and watch it park, naming every reason:
 
 ```bash
-node lib/lane-report.mjs --gate --repo my-service \
+ship-check --gate --repo my-service \
   --has-tests no --tests-pass yes \
   --ship-check-passed yes \
   --ship-check-agent builder-1 --build-agent builder-1 \
-  --scope-clean yes
+  --scope-clean yes \
+  --ship-check-findings none
 # => PARKED
 #    - no tests in the build, so green means nothing ran
 #    - ship-check ran as the build agent, so the lane blessed its own work
 ```
 
-Read the board from a synthetic lane-state fixture:
+Wiring it into CI? Do not chain a plain `--gate` into a merge — a PARKED verdict
+exits 0 on the human surface. Use `--ci`, where the verdict **is** the exit code
+(`0` auto-merge, `3` parked, `1` usage error, `2` unreadable board or config), or `--json` and read a
+field:
 
 ```bash
-node lib/lane-report.mjs --status examples/lane-state.md --today 2026-08-27
-node lib/lane-report.mjs --eligible examples/build-queue.md examples/lane-state.md
-node lib/lane-report.mjs --cap examples/lane-state.md
+ship-check --gate --repo my-service ... --ci && gh pr merge   # merges ONLY on auto-merge
+ship-check --gate --repo my-service ... --json
+# => {"verdict":"AUTO-MERGE","autoMerge":true,"reasons":[]}
+```
+
+Read the board from a synthetic lane-state fixture (either binary name works;
+`lane-report` is kept as an alias):
+
+```bash
+ship-check --status examples/lane-state.md --today 2026-08-27
+ship-check --eligible examples/build-queue.md examples/lane-state.md
+ship-check --cap examples/lane-state.md
 ```
 
 See [`WALKTHROUGH.md`](WALKTHROUGH.md) for one lane's full life — dispatch, spec
@@ -92,14 +123,16 @@ merge, and the audit — with every command run live against `examples/`.
 
 ## The gate, in one paragraph
 
-A lane auto-merges only when **all five** hold: the build has tests and they pass;
+A lane auto-merges only when **all six** hold: the build has tests and they pass;
 an independent ship-check passed; the ship-check agent is a different agent from
 the one that wrote the code (no self-bless — a missing identity is itself a
 block); the target repo is not in the protected set; and the diff stayed in
 scope. Anything else parks the lane as a PR waiting for a human. Every failing
-gate is reported, not just the first. The protected set (`PRODUCTION_REPOS` in
-`lib/lane-tally.mjs`) ships with neutral example names — **edit it to your own
-blast-radius repos.**
+gate is reported, not just the first. The protected set is **configuration**
+(`ship-check.config.json`, or `--config PATH`), with three states: no config at
+all parks the gate until you create one; a list protects those repos; an empty
+list `[]` is the deliberate opt-out. The example names live only in
+`ship-check.config.example.json`, never as a default baked into the code.
 
 ## The templates (the documented half)
 

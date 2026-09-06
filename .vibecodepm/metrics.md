@@ -16,7 +16,7 @@ How it is measured: the command exits 0 and stdout contains `AUTO-MERGE` or
 
 ## Supporting numbers
 
-- **Tests pass from a clean clone:** `npm test` exits 0 with 131 passing, 0
+- **Tests pass from a clean clone:** `npm test` exits 0 with 168 passing, 0
   failing, 0 dependencies installed. This is the trust gate before activation.
 - **Zero external dependencies:** `package.json` has no `dependencies` or
   `devDependencies`. Verified by inspection and by the suite running under bare

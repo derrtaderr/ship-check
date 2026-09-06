@@ -1,0 +1,10 @@
+{
+  "protectedRepos": [
+    "billing-service",
+    "payments-api",
+    "checkout-web",
+    "user-directory",
+    "data-pipeline",
+    "core-platform"
+  ]
+}
