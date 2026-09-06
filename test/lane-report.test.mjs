@@ -328,6 +328,48 @@ test("--status fails closed (exit 2) on a malformed board but still names the ro
   assert.match(r.stdout, /column/i, "the column-count reason is named");
 });
 
+// --- Fix wave 2: --metrics and --landed must FAIL CLOSED too ---
+// These two derive an answer from the lane table but skipped the guards.
+// --metrics called parseLanes(read(...)), bypassing both the missing-table and
+// the malformed-row guard, and laneMetrics() then filters malformed lanes out,
+// so a malformed active lane silently vanished from started/shipped/stalled.
+// --landed had the missing-table guard but then .filter(!malformed), so a
+// malformed SHIPPED row silently disappeared from the post-merge audit — a
+// merge nobody could audit. The invariant: malformed state produces no derived
+// answer, on EVERY mode, not just the two launcher inputs.
+
+test("--metrics fails closed on a malformed lane row rather than dropping it from the counts", () => {
+  const r = run(["--metrics", malformedBoard, "--today", "2026-08-27"]);
+  assert.equal(r.status, 2, "a malformed board must not produce a metrics answer");
+  assert.doesNotMatch(r.stdout, /started/i, "must not print counts derived from a malformed board");
+  assert.match(r.stderr, /malformed/i, "the refusal must say the board is malformed");
+  assert.match(r.stderr, /esp/, "the refusal must name the offending row");
+});
+
+test("--metrics still computes all four numbers on a clean board, exit 0", () => {
+  const r = run(["--metrics", lanes, "--today", "2026-08-27"]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /started\D+3/i);
+  assert.match(r.stdout, /shipped\D+1/i);
+  assert.match(r.stdout, /stalled\D+1/i);
+  assert.match(r.stdout, /median\D+14/i);
+});
+
+test("--landed fails closed on a malformed lane row rather than hiding it from the audit", () => {
+  const r = run(["--landed", malformedBoard, "--since", "2026-08-01"]);
+  assert.equal(r.status, 2, "a malformed board must not produce a landed audit");
+  assert.doesNotMatch(r.stdout, /Landed since/, "must not print an audit derived from a malformed board");
+  assert.match(r.stderr, /malformed/i, "the refusal must say the board is malformed");
+  assert.match(r.stderr, /esp/, "the refusal must name the offending row");
+});
+
+test("--landed still lists a shipped lane on a clean board, exit 0", () => {
+  const r = run(["--landed", lanes, "--since", "2026-08-20"]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /Lane 2/);
+  assert.match(r.stdout, /14 commits/);
+});
+
 test("--status exits 0 and lists open lanes on a clean board", () => {
   const r = run(["--status", lanes, "--today", "2026-08-27"]);
   assert.equal(r.status, 0);
