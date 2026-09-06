@@ -102,14 +102,17 @@ build as a stranger and finds one: a question containing a quote character
 crashes the parser with a 500 instead of failing closed. That is a **block**, not
 a bless.
 
-The orchestrator runs the gate with the reviewer's verdict:
+The orchestrator runs the gate with the reviewer's verdict. The protected-repo
+policy comes from a config file; here the shipped example config is passed
+explicitly (`command-center` is not one of its protected names):
 
 ```
 $ node lib/lane-report.mjs --gate --repo command-center \
     --has-tests yes --tests-pass yes \
     --ship-check-passed no \
     --ship-check-agent reviewer-7 --build-agent builder-3 \
-    --scope-clean yes
+    --scope-clean yes \
+    --config ship-check.config.example.json
 ## Merge gate, repo command-center
 
 PARKED
@@ -135,7 +138,8 @@ $ node lib/lane-report.mjs --gate --repo command-center \
     --has-tests yes --tests-pass yes \
     --ship-check-passed yes \
     --ship-check-agent reviewer-7 --build-agent builder-3 \
-    --scope-clean yes
+    --scope-clean yes \
+    --config ship-check.config.example.json
 ## Merge gate, repo command-center
 
 AUTO-MERGE
