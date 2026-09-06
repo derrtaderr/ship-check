@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "A deterministic merge gate for multi-agent software delivery, plus the orchestration contract templates it runs inside. Zero-dependency engine, harness-dependent contract.",
   "type": "module",
-  "private": true,
+  "private": false,
   "license": "MIT",
   "author": "Jason Derr",
   "bin": {
