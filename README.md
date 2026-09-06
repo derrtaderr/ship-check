@@ -19,8 +19,11 @@ one measured build week:
 | Agents killed mid-run by usage caps, with work lost | **2 killed, 0 lost** |
 | Production-repo merges auto-merged by mistake | **0** (one correctly parked for a human) |
 
-No demo can fake a track record. The engine below is the runnable proof of the
-rigor behind those numbers.
+The one receipt with a public, reproducible source: the **138 → 1264** test
+growth was on [`github.com/derrtaderr/gtm-architect`](https://github.com/derrtaderr/gtm-architect)
+— clone it and run its suite to check the number yourself. The other figures are
+from the same build week's private lanes. No demo can fake a track record, and
+the engine below is the runnable proof of the rigor behind these numbers.
 
 ## Two honestly-different halves
 
@@ -48,7 +51,7 @@ Requires Node 18+. No dependencies to install.
 ```bash
 git clone <this-repo> lane-engine
 cd lane-engine
-npm test                       # 126 tests, zero dependencies
+npm test                       # 131 tests, zero dependencies
 ```
 
 Run the gate. It takes five pieces of evidence and returns one verdict:

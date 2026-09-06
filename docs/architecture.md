@@ -71,7 +71,11 @@ load-bearing:
   launcher offline.
 - **Malformed rows are flagged, never dropped.** A dropped lane is an invisible
   lane, and an invisible running lane defeats the repo-independence check. A bad
-  row is kept, given a `malformed` reason, and surfaced.
+  row is kept, given a `malformed` reason, and surfaced — and the launcher inputs
+  (`--eligible`, `--status`) then **fail closed** (exit 2, naming the row) rather
+  than offering the other rows as launchable. A malformed board is not an empty
+  all-clear board; offering launches on it is exactly how a second lane gets
+  started onto a repo whose in-flight lane is already broken.
 - **`laneTableFound` distinguishes "no table" from "empty table."** Both would
   otherwise come back as an empty array, and reading that silence as a clean
   board is how a renamed header turns into "all lanes free" on a file still
@@ -109,8 +113,9 @@ one). The cap moves on recorded numbers, never on how a week felt.
 | `--gate` | AUTO-MERGE or PARKED with every reason, from the five required flags |
 
 Exit codes: `0` success (including a PARKED verdict — parking is a normal
-outcome), `1` bad usage, `2` unreadable file. A zero exit on `--gate` is not a
-pass on its own; read the word.
+outcome), `1` bad usage, `2` an unreadable table **or a malformed lane row** on a
+launcher-input mode. A zero exit on `--gate` is not a pass on its own; read the
+word. `--help` (or `-h`) lists every mode and the gate's flags.
 
 ## Faithfulness
 
@@ -118,4 +123,4 @@ This engine is an extraction of a production instance. No gate rule or parser
 behavior was changed in the move. The genericization renamed the protected-repo
 set and the fixtures to neutral examples and re-pointed default file paths at the
 working directory; every rule the source system relied on is preserved, and the
-brought-across test suite (126 tests) is the proof.
+brought-across test suite (131 tests) is the proof.

@@ -52,6 +52,16 @@ test("--metrics prints all four numbers", () => {
   assert.match(r.stdout, /median\D+14/i);
 });
 
+test("--help lists every mode and the gate's required flags, exit 0", () => {
+  const r = run(["--help"]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /--eligible/);
+  assert.match(r.stdout, /--gate/);
+  // the gate reveals its flags one refusal at a time; --help lists them up front
+  assert.match(r.stdout, /--ship-check-agent/);
+  assert.match(r.stdout, /--scope-clean/);
+});
+
 test("no mode is a usage error, not a crash", () => {
   const r = run([]);
   assert.equal(r.status, 1);
