@@ -1,5 +1,5 @@
 {
-  "name": "lane-engine",
+  "name": "ship-check",
   "version": "0.1.0",
   "description": "A deterministic merge gate for multi-agent software delivery, plus the orchestration contract templates it runs inside. Zero-dependency engine, harness-dependent contract.",
   "type": "module",

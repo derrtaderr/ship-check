@@ -5,7 +5,7 @@ gate: 2
 read_by: gtm (confirms shippable before launch planning), and the next ship-check run
 ---
 
-# Ship-check — lane-engine (gate 1)
+# Ship-check — ship-check (gate 1)
 
 Walked from a clean `git clone` into a tmp dir, no `node_modules`, Node v25.6.1.
 This is a public-bound extract whose whole value is a track record, so the walk
@@ -139,7 +139,7 @@ no argv secrets. Untrusted markdown is parsed defensively. Nothing to leak.
 ## Differentiation from prior art — ACCURATE
 The README's paraphrase of `earn-autonomy` ("autonomy trust ladder — earning the
 right to run unattended over time") matches that repo's actual public description;
-lane-engine is the orthogonal axis (a single change earning a merge via
+ship-check is the orthogonal axis (a single change earning a merge via
 adversarial review gates). Non-overlapping.
 
 ---
@@ -156,7 +156,7 @@ date: 2026-09-06
 
 ---
 
-# Ship-check — lane-engine (gate 2) — fix-wave 1 re-gate
+# Ship-check — ship-check (gate 2) — fix-wave 1 re-gate
 
 Re-verified from a second genuinely clean `git clone` (no `node_modules`, Node
 v25.6.1) against the 2 commits on top of the gate-1 base (`1772f53` fix,

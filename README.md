@@ -1,4 +1,4 @@
-# lane-engine
+# ship-check
 
 **A deterministic merge gate for multi-agent software delivery — plus the
 orchestration contract it runs inside.** Several build agents work in parallel,
@@ -49,8 +49,8 @@ loop, the templates tell your harness how to drive it.
 Requires Node 18+. No dependencies to install.
 
 ```bash
-git clone <this-repo> lane-engine
-cd lane-engine
+git clone <this-repo> ship-check
+cd ship-check
 npm test                       # 131 tests, zero dependencies
 ```
 

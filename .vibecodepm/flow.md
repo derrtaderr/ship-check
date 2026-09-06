@@ -3,7 +3,7 @@ artifact: flow
 status: current
 ---
 
-# flow.md — lane-engine
+# flow.md — ship-check
 
 The expected experience of a stranger adopting the runnable half.
 
