@@ -26,7 +26,8 @@ The gate's verdicts are the real logic and are kept faithful:
 - **AUTO-MERGE** only when all of: the build has tests and they pass; an
   independent ship-check passed; the ship-check agent differs from the build
   agent (no self-bless); the repo is not in the protected/production set; the
-  diff stayed in scope.
+  diff stayed in scope; and the review produced severity-graded findings with no
+  blocker (a bless carrying a blocker, or no structured findings at all, parks).
 - **PARKED** otherwise, with every failing reason collected (not
   short-circuited), so one run names everything wrong with the lane.
 

@@ -51,7 +51,7 @@ Requires Node 18+. No dependencies to install.
 ```bash
 git clone <this-repo> ship-check
 cd ship-check
-npm test                       # 158 tests, zero dependencies
+npm test                       # 168 tests, zero dependencies
 npm link                       # optional: puts `ship-check` on your PATH
 ```
 
@@ -66,7 +66,7 @@ cp ship-check.config.example.json ship-check.config.json
 With **no** config present the gate parks and tells you to create one. It never
 treats "unconfigured" as "nothing protected."
 
-Run the gate. It takes five pieces of evidence and returns one verdict:
+Run the gate. It takes its evidence and returns one verdict:
 
 ```bash
 ship-check --gate --repo my-service \
@@ -99,7 +99,7 @@ ship-check --gate --repo my-service \
 
 Wiring it into CI? Do not chain a plain `--gate` into a merge — a PARKED verdict
 exits 0 on the human surface. Use `--ci`, where the verdict **is** the exit code
-(`0` auto-merge, `3` parked, `1` usage, `2` bad evidence), or `--json` and read a
+(`0` auto-merge, `3` parked, `1` usage error, `2` unreadable board or config), or `--json` and read a
 field:
 
 ```bash
@@ -123,7 +123,7 @@ merge, and the audit — with every command run live against `examples/`.
 
 ## The gate, in one paragraph
 
-A lane auto-merges only when **all five** hold: the build has tests and they pass;
+A lane auto-merges only when **all six** hold: the build has tests and they pass;
 an independent ship-check passed; the ship-check agent is a different agent from
 the one that wrote the code (no self-bless — a missing identity is itself a
 block); the target repo is not in the protected set; and the diff stayed in

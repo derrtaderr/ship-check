@@ -222,3 +222,160 @@ hard_gate: none — gate-1 blocker cleared and verified.
 success_window: carried from metrics.md — activation = a stranger runs the gate
 and gets a verdict (exit 0, stdout AUTO-MERGE|PARKED), demonstrated live.
 date: 2026-09-06
+
+---
+
+# Ship-check — ship-check (gate 3) — harden-and-configure lane, senior contract
+
+Reviewed as `shipcheck-shipcheck-harden`, independent of the build agents, from a
+genuinely fresh `git clone` of `lane/harden-and-configure` into a tmp dir (no
+`node_modules`, Node v25.6.1). `npm test` → **168 pass, 0 fail, 0 deps**. This is
+the FIRST review run under the upgraded senior-reviewer contract
+(`templates/reviewer-contract.md`), reviewing the very change that wrote it, so it
+was held to all five mandated passes. Pass 1 (blast-radius / class-not-instance)
+was run hardest, because the external review that triggered this lane caught the
+prior wave closing only 2 of 4 fail-open surfaces. A user-advocate stranger walk
+was dispatched and its findings are folded in below.
+
+## Verdict: BLESS
+
+The change does what it claims. The fail-closed invariant — the whole reason this
+lane exists — is now **universal across every mode**, independently verified by
+grep + real exit codes + a mutation test, not taken on the lane's word. Zero
+blockers. The findings are all documentation / map drift, three important and two
+minor, none of which touches behavior, security, or the fail-closed guarantee. A
+bless may carry importants and minors; per the contract, blocking a logic-sound,
+privacy-clean, fail-closed hardening over stale doc numbers would itself be a
+junior nitpick-block. **For the PUBLIC flip the bless is provisional** (installable
+-artifact rule): important #1 and #3 below are wrong claims on the exact
+verify-me / CI-wiring surfaces the product sells and must be corrected before the
+repo goes public.
+
+### Pass 1 — BLAST-RADIUS: the fail-closed class IS closed (the #1 job)
+
+Grepped every `parseLanes(` / `read(` / `.filter(` / mode entry, then probed each
+mode with real exit codes against a malformed-row board AND a missing/altered-table
+board. Result, all reproduced live:
+
+| mode | malformed row | missing/altered table | clean board |
+|---|---|---|---|
+| `--eligible` | exit 2 | exit 2 | exit 0 |
+| `--status`   | exit 2 | exit 2 | exit 0 |
+| `--metrics`  | exit 2 | exit 2 | exit 0 |
+| `--landed`   | exit 2 | exit 2 | exit 0 |
+| `--cap`      | exit 2 (on malformed HISTORY) | exit 2 | exit 0 |
+| `--gate`     | reads no lane file — config-only, parks fail-closed | — | — |
+
+- The 4 `parseLanes` callers (`--eligible/--status/--metrics/--landed`) each route
+  through `readLaneFile` + either `refuseOnMalformedLanes` or `exitCode=2`. The two
+  the external reviewer caught (`--metrics`, `--landed`) are now closed exactly like
+  the two that were already closed. **The class is closed, not just the instances.**
+- **`--cap` "exempt by construction" — VERIFIED, not accepted.** Injected a malformed
+  lane row into a valid cap+history fixture; `--cap` output was byte-identical and
+  exit 0. It never calls `parseLanes`; it derives the cap only from the `**Cap: N.**`
+  line and the metrics-history table, and it fails closed (exit 2) on a malformed
+  HISTORY row (its actual input). The exemption is real and correctly reasoned, and
+  `docs/harden-and-configure.md` records the absence-of-a-change as a decision.
+- **Mutation test (pass 3 refute, applied to the new logic):** inverting the
+  not-configured park → 2 tests red; allowing a bless to carry a blocker → 2 red;
+  accepting an unstructured findings string as structured → 3 red; restore → 168
+  green. The suite genuinely binds the hardening.
+
+### Config safety (npm-install-and-run cannot skip protection) — PASS
+
+Every partial/malformed config fails closed, no false auto-merge in any case:
+no config in cwd → PARK (exit 0, human gate); empty file / non-JSON / missing
+`protectedRepos` / wrong type / non-string entry → exit 2 naming the fault; literal
+`null` → PARK (not-configured); explicit `--config` at a missing path → exit 2.
+`protectedRepos: []` opt-out prints `Production protection is deliberately disabled
+(protectedRepos: [])` on stderr **before** auto-merging — the risky path announces
+itself. The effective default is `ship-check.config.json`; the example ships as
+`ship-check.config.example.json` and `.gitignore` excludes the real one, so the
+example is clearly not a silent default.
+
+### Machine surface (`--ci`/`--json`) — PASS, no E1 divergence
+
+`--ci`: auto-merge exit 0, parked (protected) exit 3, parked (no config) exit 3 — a
+PARKED verdict never exits 0. `--json` is one parseable doc with `verdict` as a
+field. `--json` + `--ci` on the same inputs always agree (PARKED→3, AUTO-MERGE→0):
+the same-fact-two-surfaces class is closed.
+
+### Structured-findings gate — PASS, no blocker sneaks through
+
+`none`→auto-merge; `minor=3`→auto-merge; `blocker=0,important=2`→auto-merge;
+`"looks fine"`/empty/`"yes"`/missing flag→PARK ("no structured findings");
+bless+`blocker=1`→PARK ("a blocker must block"); uppercase `BLOCKER=1`→PARK; sneak
+`"none,blocker=1"`→PARK. No unstructured verdict and no blocker-carrying bless can
+pass.
+
+### Backward-compat — PASS
+
+Plain `--gate` unchanged (exit 0 on park, human output). `lane-report` bin alias
+still present alongside `ship-check` (both in `package.json` bin; `--help` runs from
+either). WALKTHROUGH §4/§6 gate commands and the README `--status`/PARKED/JSON
+blocks reproduce verbatim.
+
+### Public hygiene — CLEAN
+
+`npm pack --dry-run`: 19 files, only lib/templates/docs/examples + 4 root docs +
+`ship-check.config.example.json`. No `test/`, no `.vibecodepm/`, no `WIRING.md`, no
+real config, no dev exhaust. Private-token sweep (client names, private repos,
+brands, secrets, absolute paths) over the full working tree AND all git history:
+zero hits — the only history matches are Jason's own public authorship email. The
+independence trust-boundary section in `docs/architecture.md` is honest and plain:
+it states the gate proves `reviewerId !== builderId` but NOT that they are separate
+sessions, names the harness as responsible, and calls it a boundary, not a bug. No
+overclaim.
+
+## Findings (blocker=0, important=3, minor=2)
+
+- **IMPORTANT #1 — test count is wrong on the shipped verify-me surface, three ways.**
+  `npm test` = **168**. `README.md:54` and `docs/architecture.md:184` say "158";
+  `.vibecodepm/flow.md:21` and `metrics.md:19` say "131". The README's whole pitch is
+  "clone it and run the tests" — the first number a skeptical stranger checks is one
+  line above the command and does not match. Corroborated by the user-advocate
+  (graded high). Fix before the public flip.
+- **IMPORTANT #2 — `flow.md` happy-path activation example now PARKS.** `flow.md`
+  step 3 shows `--gate … --ship-check-passed yes …` (no `--ship-check-findings`, no
+  `--config`) → "prints AUTO-MERGE". Run verbatim against the hardened build it
+  PARKS on two reasons (no structured findings; policy not configured). The build is
+  correct; the MAP is stale on the exact activation step this gate walks against.
+  Internal (not shipped) and the shipped README example is correct, so lower impact
+  than #1 — but it should be reconciled (add the findings flag + a config/opt-out to
+  the happy path, and fix 131→168) or the next ship-check run walks a self-parking
+  activation example.
+- **IMPORTANT #3 — README/architecture mislabel the `--ci` exit codes.** Both list
+  "`2` bad evidence" in the `--ci` legend (`README.md`, `docs/architecture.md:167`).
+  A bad evidence value (`--has-tests maybe`) actually exits **1**; exit 2 is reserved
+  for an unreadable/malformed board or config (the `--help` text is accurate; the
+  README legend is the stale one). Independently flagged by the user-advocate
+  (medium): a CI author wiring off this paragraph — its stated purpose — builds the
+  wrong exit-2 handler. No wrong-merge risk (both are non-zero, so `--ci && merge`
+  still won't merge a park); it is a labeling drift on the CI surface. Fix before flip.
+- **MINOR #1 — "all five hold" undercounts the gate.** `README.md:126` and `SPEC.md:28`
+  summarize the gate as five conditions; `mergeVerdict` also enforces the
+  structured-findings condition (documented prominently two paragraphs above, so a
+  reader is not misled, but the count-summary is stale — it is now six-ish).
+- **MINOR #2 — README AUTO-MERGE example prints PARKED before the `cp` step.** The
+  annotated `# => AUTO-MERGE` block (README 72–78) reproduces only after the
+  `cp …example.json …config.json` step that precedes it. Safe direction (it parks,
+  never a spurious merge). Worth a one-line "(after the cp step above)" note.
+
+## Notes carried forward (not conditions)
+- The hero-table receipts (`138 → 1264`, etc.) are honestly sourced to a private
+  build week with only the gtm-architect figure pointed at a public repo; neither
+  reviewer re-cloned that external repo this pass (gate 1/2 did and confirmed 1264).
+- `--status` / `--cap` now exit 2 on a malformed board (was 0 at gate 1) — the
+  intended fix, consistent with `dispatch-procedure.md`, not a regression.
+
+---
+
+Decision: **BLESS** (gate 3), provisional on the pre-flip fix of the shipped doc
+drifts.
+hard_gate: none blocks the merge. Before the PUBLIC flip, correct the shipped
+test-count claim (168, not 158/131) in README + architecture, and the `--ci`
+exit-2 "bad evidence" label (bad evidence exits 1; exit 2 is unreadable board/
+config). Reconcile the stale `flow.md` happy-path example in the same pass.
+success_window: carried from metrics.md — activation = a stranger runs the gate
+and gets a verdict (exit 0, stdout AUTO-MERGE|PARKED), demonstrated live.
+date: 2026-09-06

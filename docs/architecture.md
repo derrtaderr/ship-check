@@ -181,5 +181,5 @@ under "extraction": `--metrics` and `--landed` now fail closed on a malformed
 board like the other lane-reading modes, and the protected-repo set became
 configuration with a not-configured park instead of a hard-coded default. The
 additive `--ci`/`--json` gate surface leaves the human `--gate` unchanged. Every
-rule the source system relied on is preserved, and the test suite (158 tests) is
+rule the source system relied on is preserved, and the test suite (168 tests) is
 the proof.
