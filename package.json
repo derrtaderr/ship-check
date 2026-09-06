@@ -1,0 +1,28 @@
+{
+  "name": "lane-engine",
+  "version": "0.1.0",
+  "description": "A deterministic merge gate for multi-agent software delivery, plus the orchestration contract templates it runs inside. Zero-dependency engine, harness-dependent contract.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "Jason Derr",
+  "bin": {
+    "lane-report": "./lib/lane-report.mjs"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "lib/",
+    "templates/",
+    "docs/",
+    "examples/",
+    "README.md",
+    "WALKTHROUGH.md",
+    "SPEC.md",
+    "LICENSE"
+  ]
+}
