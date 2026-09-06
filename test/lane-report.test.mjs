@@ -152,6 +152,9 @@ const GATE_GREEN = [
   "--ship-check-agent", "user-advocate-1",
   "--build-agent", "execution-agent-1",
   "--scope-clean", "yes",
+  // A structured, clean review. The gate now requires structured findings, so
+  // the green baseline states them: an adversarial walk that found nothing.
+  "--ship-check-findings", "none",
   // The protected policy is now configuration. The listed fixture config is the
   // migrated stand-in for the old hard-coded PRODUCTION_REPOS const, so these
   // existing gate cases keep their meaning (esp not protected -> auto-merge,
@@ -226,6 +229,38 @@ test("--gate rejects a yes/no flag carrying anything else", () => {
   const r = gate({ "--tests-pass": "true" });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /yes or no/);
+});
+
+// --- The gate requires structured findings (senior-reviewer enforcement) ---
+
+test("--gate parks an unstructured review, naming the missing structure, beside a clean pass", () => {
+  const parked = gate({ "--ship-check-findings": "looks fine" });
+  assert.match(parked.stdout, /PARKED/);
+  assert.match(parked.stdout, /structured findings/i);
+  assert.doesNotMatch(parked.stdout, /AUTO-MERGE/);
+
+  const passed = gate(); // GATE_GREEN carries --ship-check-findings none
+  assert.equal(passed.status, 0);
+  assert.match(passed.stdout, /AUTO-MERGE/);
+});
+
+test("--gate parks a bless that carries a blocker finding", () => {
+  const r = gate({ "--ship-check-findings": "blocker=1,important=0,minor=0" });
+  assert.match(r.stdout, /PARKED/);
+  assert.match(r.stdout, /blocker must block/i);
+});
+
+test("--gate auto-merges a bless whose review found only minors", () => {
+  const r = gate({ "--ship-check-findings": "blocker=0,important=0,minor=2" });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /AUTO-MERGE/);
+});
+
+test("--gate --json carries the structured-findings reason on a park", () => {
+  const r = gate({ "--ship-check-findings": "" }, ["--json"]);
+  const env = JSON.parse(r.stdout);
+  assert.equal(env.autoMerge, false);
+  assert.ok(env.reasons.some((x) => /structured findings/i.test(x)));
 });
 
 // --- Protected repos as configuration: the three states ---

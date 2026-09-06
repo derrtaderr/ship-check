@@ -238,7 +238,7 @@ test("a lane malformed for a non-status reason still claims its repo via activeR
   assert.ok(repos.has("payments-api"), "a malformed-but-status-legible running row must still claim its repo");
 });
 
-import { mergeVerdict, resolveProtectionPolicy } from "../lib/lane-tally.mjs";
+import { mergeVerdict, resolveProtectionPolicy, parseReviewFindings } from "../lib/lane-tally.mjs";
 
 const greenChecks = {
   hasTests: true,
@@ -247,6 +247,9 @@ const greenChecks = {
   shipCheckAgent: "user-advocate-1",
   buildAgent: "execution-agent-1",
   scopeClean: true,
+  // A structured, clean review: an adversarial walk that found nothing. The
+  // gate now requires structured findings, so the green baseline carries them.
+  reviewFindings: parseReviewFindings("none"),
 };
 
 // The protected policy is now a required third argument to mergeVerdict, loaded
@@ -395,6 +398,52 @@ test("a lane whose ship-check agent equals the build agent fails that gate", () 
 test("a non-protected repo is not blocked by the protected gate", () => {
   const v = mv({ repo: "esp" }, greenChecks);
   assert.ok(!v.reasons.some((r) => /protected/i.test(r)));
+});
+
+// --- The gate requires structured findings (senior-reviewer enforcement) ---
+// The gate cannot verify a blast-radius pass happened, but it can refuse a
+// review that reached no structured, calibrated result.
+
+test("parseReviewFindings: 'none' is a structured clean pass with zero findings", () => {
+  const f = parseReviewFindings("none");
+  assert.equal(f.structured, true);
+  assert.equal(f.total, 0);
+  assert.equal(f.counts.blocker, 0);
+});
+
+test("parseReviewFindings: severity-tagged counts parse into per-severity totals", () => {
+  const f = parseReviewFindings("blocker=0,important=2,minor=1");
+  assert.equal(f.structured, true);
+  assert.equal(f.counts.blocker, 0);
+  assert.equal(f.counts.important, 2);
+  assert.equal(f.counts.minor, 1);
+  assert.equal(f.total, 3);
+});
+
+test("parseReviewFindings: a hedge, an empty value, or a bare yes is NOT structured", () => {
+  assert.equal(parseReviewFindings("looks fine").structured, false);
+  assert.equal(parseReviewFindings("").structured, false);
+  assert.equal(parseReviewFindings("yes").structured, false);
+  assert.equal(parseReviewFindings(undefined).structured, false);
+  assert.equal(parseReviewFindings("blocker=two").structured, false, "non-numeric count is not structured");
+});
+
+test("mergeVerdict parks a review with no structured findings, naming what is missing", () => {
+  const v = mv({ repo: "esp" }, { ...greenChecks, reviewFindings: parseReviewFindings("looks fine") });
+  assert.equal(v.autoMerge, false);
+  assert.ok(v.reasons.some((r) => /structured findings/i.test(r)));
+});
+
+test("mergeVerdict parks a bless that carries a blocker finding — a blocker must block", () => {
+  const v = mv({ repo: "esp" }, { ...greenChecks, reviewFindings: parseReviewFindings("blocker=1,important=0,minor=0") });
+  assert.equal(v.autoMerge, false, "a blessed review cannot carry an unresolved blocker");
+  assert.ok(v.reasons.some((r) => /blocker must block/i.test(r)));
+});
+
+test("mergeVerdict auto-merges a green lane whose review found only minors", () => {
+  const v = mv({ repo: "esp" }, { ...greenChecks, reviewFindings: parseReviewFindings("blocker=0,important=0,minor=3") });
+  assert.equal(v.autoMerge, true, "minor findings do not block a bless");
+  assert.deepEqual(v.reasons, []);
 });
 
 import { laneMetrics, isCleanWeek, capRecommendation } from "../lib/lane-tally.mjs";

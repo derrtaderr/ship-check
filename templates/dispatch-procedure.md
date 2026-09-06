@@ -105,6 +105,15 @@ both agent identifiers, because the gate compares them to catch self-bless. Only
 an explicit bless is `--ship-check-passed yes`. A block, a conditional pass, a
 hedge, or a report that never reaches a verdict is `no`.
 
+The reviewer also returns its findings as a severity-tagged summary — `none` for
+a clean adversarial pass, or `blocker=N,important=N,minor=N`. Pass it verbatim as
+`--ship-check-findings`. The gate refuses an unstructured review (an empty value,
+a hedge, a bare "yes") and refuses a bless that carries a `blocker`, so the gate
+enforces that the review happened, was independent, and was calibrated. The
+*seniority* of the judgment — the blast-radius pass, the missing question — is the
+contract's discipline and the record's credibility, not something the gate can
+see.
+
 ### 5.3 Run the gate and obey it
 
 ```bash
@@ -115,11 +124,17 @@ node lib/lane-report.mjs --gate \
   --ship-check-passed yes|no \
   --ship-check-agent <the reviewer agent id> \
   --build-agent <the build agent id> \
-  --scope-clean yes|no
+  --scope-clean yes|no \
+  --ship-check-findings none|blocker=N,important=N,minor=N \
+  --config ./ship-check.config.json
 ```
 
-Every flag is required; none has a default. `--scope-clean` is `no` whenever the
-diff reaches outside the row's declared scope.
+Every evidence flag is required; none has a default. `--scope-clean` is `no`
+whenever the diff reaches outside the row's declared scope. `--ship-check-findings`
+carries the reviewer's severity-tagged result. `--config` names the
+protected-repo policy; with no config the gate parks rather than treating the set
+as empty. In CI, add `--ci` so a parked verdict exits `3` (not `0`) and a chained
+`&& gh pr merge` cannot merge a park, or `--json` and read the `autoMerge` field.
 
 - **AUTO-MERGE** — merge as a single squash commit so `git revert <sha>` stays a
   one-command undo. Set status to `shipped` and record the commit count and the

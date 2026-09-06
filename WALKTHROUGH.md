@@ -112,6 +112,7 @@ $ node lib/lane-report.mjs --gate --repo command-center \
     --ship-check-passed no \
     --ship-check-agent reviewer-7 --build-agent builder-3 \
     --scope-clean yes \
+    --ship-check-findings blocker=1,important=0,minor=0 \
     --config ship-check.config.example.json
 ## Merge gate, repo command-center
 
@@ -139,15 +140,17 @@ $ node lib/lane-report.mjs --gate --repo command-center \
     --ship-check-passed yes \
     --ship-check-agent reviewer-7 --build-agent builder-3 \
     --scope-clean yes \
+    --ship-check-findings none \
     --config ship-check.config.example.json
 ## Merge gate, repo command-center
 
 AUTO-MERGE
 ```
 
-All five gates hold: tests exist and pass, the ship-check blessed it, the
-reviewer (`reviewer-7`) is a different agent from the builder (`builder-3`) so it
-is not self-bless, `command-center` is not in the protected set, and the diff
+All five gates hold: tests exist and pass, the ship-check blessed it with a
+structured, calibrated result (`none` — an adversarial pass that found nothing),
+the reviewer (`reviewer-7`) is a different agent from the builder (`builder-3`) so
+it is not self-bless, `command-center` is not in the protected set, and the diff
 stayed in scope. The orchestrator merges as a single squash commit (so
 `git revert <sha>` is a one-command undo), sets the lane to `shipped`, and records
 the commit count and the squash sha.

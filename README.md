@@ -73,9 +73,15 @@ ship-check --gate --repo my-service \
   --has-tests yes --tests-pass yes \
   --ship-check-passed yes \
   --ship-check-agent reviewer-1 --build-agent builder-1 \
-  --scope-clean yes
+  --scope-clean yes \
+  --ship-check-findings none
 # => AUTO-MERGE
 ```
+
+`--ship-check-findings` carries the reviewer's severity-tagged result — `none`
+for a clean adversarial pass, or `blocker=N,important=N,minor=N`. An unstructured
+review parks, and a bless carrying a `blocker` parks: the gate enforces that the
+review happened and was calibrated, not just that someone said "looks fine."
 
 Flip any input and watch it park, naming every reason:
 
@@ -84,7 +90,8 @@ ship-check --gate --repo my-service \
   --has-tests no --tests-pass yes \
   --ship-check-passed yes \
   --ship-check-agent builder-1 --build-agent builder-1 \
-  --scope-clean yes
+  --scope-clean yes \
+  --ship-check-findings none
 # => PARKED
 #    - no tests in the build, so green means nothing ran
 #    - ship-check ran as the build agent, so the lane blessed its own work
