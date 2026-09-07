@@ -106,3 +106,15 @@ change behavior deliberately — the malformed-board fail-closed extension to
 `--ci`/`--json` gate surface. That wave is genuine red-first new work with its
 own tests, and it is documented as a behavior change rather than folded into the
 extraction's "no new logic" framing.
+
+`--queue-audit` (added 2026-09-06) is likewise new, red-first work, not part of
+the extraction: `auditQueue(queueMd, lanesMd)` cross-checks the two mutable
+surfaces the whole tool reads — duplicate row IDs, shipped rows still offered as
+eligible, open lanes citing rows the queue does not have, eligible rows missing
+the repo/unit that make a dispatch safe, and two eligible rows claiming one
+repo. It reports each repair and performs none (which colliding row is canonical
+is the operator's judgment), fails closed on an unreadable board like every
+other mode, and carries `--ci` (blocker → exit 3) and `--json`. Known limit,
+recorded rather than papered over: a shipped row that no lane ever cited cannot
+be caught — there is nothing on the board to cross-check it against. The board
+row is the receipt; work that skips the board is invisible to the audit.

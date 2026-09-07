@@ -117,6 +117,20 @@ ship-check --eligible examples/build-queue.md examples/lane-state.md
 ship-check --cap examples/lane-state.md
 ```
 
+Audit the control plane itself — the queue and the board drift (a row ships and
+stays eligible, a lane runs with no row, two rows claim one ID), and every drift
+silently corrupts what `--eligible` offers next:
+
+```bash
+ship-check --queue-audit build-queue.md lane-state.md          # findings + repairs
+ship-check --queue-audit build-queue.md lane-state.md --ci     # exit 3 on any blocker
+```
+
+It reports each repair and performs none of them — which of two colliding rows is
+canonical is the operator's call, not a parser's. First run on the live board that
+motivated it, it found eight blockers, including one a careful human review of the
+same two files had missed.
+
 See [`WALKTHROUGH.md`](WALKTHROUGH.md) for one lane's full life — dispatch, spec
 commit, TDD cycles, a reviewer finding a real bug, the fix wave, the re-gate, the
 merge, and the audit — with every command run live against `examples/`.
